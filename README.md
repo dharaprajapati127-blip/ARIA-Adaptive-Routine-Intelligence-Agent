@@ -176,7 +176,13 @@ DATABASE_URL=sqlite:///aria.db
 # Start the bot
 python bot/main.py
 ```
+### First Run Output
 
+\```
+ARIA is running...
+\```
+
+Open Telegram, search **@aria_routine_bot**, send `/start` and ARIA will respond.
 ---
 
 ## Roadmap
@@ -227,8 +233,6 @@ Training: Starts after 14 days of real usage data per user
 
 **Dhara Prajapati**  
 B.Tech CSE (AI & Data Science)  
-[LinkedIn](https://linkedin.com) · [GitHub](https://github.com) · [Email](mailto:you@email.com)
-
 ---
 
 ## License

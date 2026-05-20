@@ -1,1 +1,4 @@
 .env
+aria.db
+__pycache__/
+*.pyc

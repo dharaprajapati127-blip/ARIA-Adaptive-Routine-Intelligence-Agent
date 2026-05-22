@@ -2,11 +2,9 @@
 
 > An AI agent that doesn't give you a schedule — it negotiates your day with you in real time and rebuilds itself when you fall off.
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square)
-![Telegram](https://img.shields.io/badge/Telegram-Bot%20API-26A5E4?style=flat-square)
-![LLM](https://img.shields.io/badge/LLM-Mistral%20%2F%20GPT--4o-purple?style=flat-square)
-![Status](https://img.shields.io/badge/Status-In%20Development-orange?style=flat-square)
-
+![Status](https://img.shields.io/badge/Status-Live%20on%20AWS-green?style=flat-square)
+![AWS](https://img.shields.io/badge/AWS-EC2-FF9900?style=flat-square)
+![MySQL](https://img.shields.io/badge/Database-MySQL-4479A1?style=flat-square)
 ---
 
 ## The Problem
@@ -95,9 +93,9 @@ User (Telegram)
 | Scheduling | Google OR-Tools | Constraint-based daily schedule optimization |
 | ML | scikit-learn + pandas | Behavioral pattern learning from real user data |
 | Automation | APScheduler (Python) | Morning check-ins, reminders, daily triggers |
-| Storage | SQLite (dev) → MongoDB (prod) | User data, task history, check-in logs |
+| Storage | MySQL on AWS EC2 | User data, check-ins, alarms |
 | Visualization | Matplotlib + Streamlit | Weekly report dashboard |
-| Deployment | Railway / Render (free tier) | Always-on bot hosting |
+| Deployment | AWS EC2 (Mumbai) | Always-on 24/7 cloud hosting |
 
 ---
 
@@ -188,18 +186,20 @@ Open Telegram, search **@aria_routine_bot**, send `/start` and ARIA will respond
 ## Roadmap
 
 - [x] Project architecture and planning
-- [ ] Telegram bot setup and basic message handling
-- [ ] Morning check-in conversation flow
+- [x] Telegram bot setup and basic message handling
+- [x] Morning check-in conversation flow
+- [x] Personalized onboarding flow (wake time, sleep time, sleep goal, reminder gap)
+- [x] MySQL database layer for persistent storage
+- [x] Wake-up alarm, task reminders, sleep alarm via APScheduler
+- [x] /setalarm, /done, /history, /alarms commands
+- [x] Deployed on AWS EC2 (Mumbai) — running 24/7
 - [ ] Natural language task input via LLM
 - [ ] OR-Tools scheduling engine
 - [ ] Real-time schedule rebuild on task completion/skip
-- [ ] SQLite data layer for check-ins and tasks
 - [ ] Behavioral ML model on real user data
 - [ ] Drift detection and proactive alerts
 - [ ] Weekly report generation
-- [ ] Deploy to Railway (always-on)
 - [ ] WhatsApp integration via Twilio (planned)
-
 ---
 
 ## Evaluation Metrics

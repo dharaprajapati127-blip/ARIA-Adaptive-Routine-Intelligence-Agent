@@ -165,7 +165,7 @@ cp .env.example .env
 ```env
 TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 GROQ_API_KEY=your_groq_api_key
-DATABASE_URL=sqlite:///aria.db
+DATABASE_URL=MySQL:///aria.db
 ```
 
 ### Running ARIA

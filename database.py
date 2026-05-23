@@ -146,6 +146,7 @@ def save_user_prefs(
     sleep_time: str | None = None,
     sleep_goal_hours: float | None = None,
     task_reminder_gap: int | None = None,
+    task_limit: int | None = None,
     onboarded: bool | None = None,
 ) -> None:
     """Update only the fields you pass — None fields are left untouched."""
@@ -154,6 +155,7 @@ def save_user_prefs(
     if sleep_time         is not None: fields.append("sleep_time = %s");         values.append(sleep_time)
     if sleep_goal_hours   is not None: fields.append("sleep_goal_hours = %s");   values.append(sleep_goal_hours)
     if task_reminder_gap  is not None: fields.append("task_reminder_gap = %s");  values.append(task_reminder_gap)
+    if task_limit         is not None: fields.append("task_limit = %s");         values.append(task_limit)
     if onboarded          is not None: fields.append("onboarded = %s");           values.append(int(onboarded))
     if not fields:
         return
@@ -359,4 +361,3 @@ def get_completion_rate(telegram_id: int, days: int = 7) -> float | None:
     if row and row["total"]:
         return row["done"] / row["total"]
     return None
-

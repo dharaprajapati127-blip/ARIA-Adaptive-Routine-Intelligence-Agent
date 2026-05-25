@@ -2,12 +2,14 @@
 ARIA — Adaptive Routine Intelligence Agent
 main.py
 
-Changes in his version:
+Changes in this version:
   - Task limit set during onboarding (user picks 3 / 5 / custom)
   - Task reminders only show incomplete tasks
   - Motivational messages after task completion
   - Checkin prompt tells user how many tasks they can set
   - /setalarm also allows changing task limit
+  - OR-Tools scheduling layer added after task entry
+  - /schedule command to view today's schedule
 """
 
 import logging
@@ -28,6 +30,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 import database as db
+import scheduler as sched
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -69,7 +72,7 @@ def get_motivation(all_done: bool) -> str:
 # Conversation states
 # ─────────────────────────────────────────────────────────────
 OB_WAKE, OB_SLEEP, OB_GOAL, OB_TASKS_LIMIT, OB_GAP = range(5)
-SLEEP_IN, ENERGY, TASKS = range(10, 13)
+SLEEP_IN, ENERGY, TASKS, CONFIRM_SCHEDULE = range(10, 14)
 SA_WHICH, SA_VALUE = range(20, 22)
 
 
@@ -102,7 +105,7 @@ def fmt_tasks(tasks: list[str]) -> str:
 
 
 # ─────────────────────────────────────────────────────────────
-# Scheduler
+# Scheduler (alarms)
 # ─────────────────────────────────────────────────────────────
 def schedule_user_alarms(app, user: dict, scheduler: AsyncIOScheduler) -> None:
     uid = user["telegram_id"]
@@ -169,7 +172,7 @@ async def send_task_reminder(app, uid: int) -> None:
 
     incomplete = [c for c in completions if not c["completed"]]
     if not incomplete:
-        return  # all done, stay quiet
+        return
 
     done_count = len(completions) - len(incomplete)
     progress = f"({done_count}/{len(completions)} done) " if done_count > 0 else ""
@@ -352,7 +355,6 @@ async def checkin_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
 
     existing = db.get_todays_checkin(uid)
     if existing and existing.get("tasks"):
-        tasks = existing["tasks"]
         completions = db.get_task_completions(uid)
         lines = []
         for c in completions:
@@ -362,7 +364,7 @@ async def checkin_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> i
             f"You've already checked in today ✅\n\n"
             f"⚡ Energy: {existing.get('energy_level', '?')}\n\n"
             f"📌 Tasks:\n" + "\n".join(lines) +
-            "\n\nUse /done <number> to mark tasks complete."
+            "\n\nUse /done <number> to mark tasks complete.\nUse /schedule to see your time blocks."
         )
         return ConversationHandler.END
 
@@ -412,10 +414,14 @@ async def get_tasks_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     ][:limit]
 
     db.save_checkin(uid, tasks=tasks)
+    context.user_data["tasks"] = tasks
 
-    energy = context.user_data.get("energy", "?")
-    goal   = user.get("sleep_goal_hours")
+    energy   = context.user_data.get("energy", "Medium ⚡")
+    wake     = user.get("wake_time") or "09:00"
+    schedule = sched.build_schedule(tasks, energy, wake)
+    context.user_data["schedule"] = schedule
 
+    goal = user.get("sleep_goal_hours")
     summary = (
         f"📋 *ARIA Summary*\n\n"
         f"😴 Sleep: {context.user_data.get('sleep', '?')}\n"
@@ -423,16 +429,75 @@ async def get_tasks_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     )
     if goal:
         summary += f"🎯 Sleep goal tonight: *{goal}h* (alarm at {user['sleep_time']})\n"
-    summary += (
-        f"\n📌 Tasks:\n{fmt_tasks(tasks)}\n\n"
-        f"I'll remind you every {user.get('task_reminder_gap', 90)} min "
-        f"and ping you at {user.get('sleep_time', '?')} to wind down.\n\n"
-        "Let's make today count! 💪\n"
-        "Use /done <number> to mark a task complete."
-    )
+    summary += f"\n📌 Tasks:\n{fmt_tasks(tasks)}\n"
+
     await update.message.reply_text(summary, parse_mode="Markdown")
-    context.user_data.clear()
-    return ConversationHandler.END
+    await update.message.reply_text(
+        sched.format_schedule(schedule, energy),
+        parse_mode="Markdown",
+    )
+    return CONFIRM_SCHEDULE
+
+
+async def confirm_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip().lower()
+    uid  = update.effective_user.id
+    user = db.get_user(uid)
+
+    if text == "yes":
+        await update.message.reply_text(
+            f"✅ Schedule locked in! I'll remind you every {user.get('task_reminder_gap', 90)} min.\n\n"
+            "Let's make today count! 💪\nUse /done <number> to mark tasks complete.",
+            parse_mode="Markdown",
+        )
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    # User wants to swap — re-parse their new order
+    lines = [l.strip() for l in update.message.text.strip().splitlines() if l.strip()]
+    new_tasks = [re.sub(r"^[\d]+[.)]\s*", "", l).strip() for l in lines]
+
+    if len(new_tasks) >= 1:
+        energy   = context.user_data.get("energy", "Medium ⚡")
+        wake     = user.get("wake_time") or "09:00"
+        schedule = sched.build_schedule(new_tasks, energy, wake)
+        context.user_data["schedule"] = schedule
+        context.user_data["tasks"]    = new_tasks
+        db.save_checkin(uid, tasks=new_tasks)
+        await update.message.reply_text(
+            sched.format_schedule(schedule, energy),
+            parse_mode="Markdown",
+        )
+        return CONFIRM_SCHEDULE
+
+    await update.message.reply_text(
+        "Reply *yes* to confirm, or send a new task order (one per line).",
+        parse_mode="Markdown",
+    )
+    return CONFIRM_SCHEDULE
+
+
+# ─────────────────────────────────────────────────────────────
+# /schedule — view today's schedule anytime
+# ─────────────────────────────────────────────────────────────
+async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid     = update.effective_user.id
+    user    = db.get_user(uid)
+    checkin = db.get_todays_checkin(uid)
+    tasks   = (checkin or {}).get("tasks") or []
+
+    if not tasks:
+        await update.message.reply_text("No tasks yet today. Do /checkin first!")
+        return
+
+    energy   = (checkin or {}).get("energy_level") or "Medium ⚡"
+    wake     = user.get("wake_time") or "09:00"
+    schedule = sched.build_schedule(tasks, energy, wake)
+
+    await update.message.reply_text(
+        sched.format_schedule(schedule, energy),
+        parse_mode="Markdown",
+    )
 
 
 # ─────────────────────────────────────────────────────────────
@@ -546,11 +611,9 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         try:
             idx = int(context.args[0]) - 1
             if db.mark_task_done(uid, idx):
-                # Check if all tasks are now done
                 completions = db.get_task_completions(uid)
                 all_done = all(c["completed"] for c in completions)
                 motivation = get_motivation(all_done)
-
                 await update.message.reply_text(
                     f"✅ *Done:* _{tasks[idx]}_\n\n{motivation}",
                     parse_mode="Markdown",
@@ -569,8 +632,8 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(
             f"📋 *Today's tasks* ({done_count}/{len(completions)} done):\n\n" +
             "\n".join(lines) +
-            "\n\nUse /done 1, /done 2, etc. to mark complete."
-            , parse_mode="Markdown"
+            "\n\nUse /done 1, /done 2, etc. to mark complete.",
+            parse_mode="Markdown",
         )
 
 
@@ -625,9 +688,10 @@ def main() -> None:
     checkin = ConversationHandler(
         entry_points=[CommandHandler("checkin", checkin_start)],
         states={
-            SLEEP_IN: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_sleep_checkin)],
-            ENERGY:   [MessageHandler(filters.TEXT & ~filters.COMMAND, get_energy_checkin)],
-            TASKS:    [MessageHandler(filters.TEXT & ~filters.COMMAND, get_tasks_checkin)],
+            SLEEP_IN:         [MessageHandler(filters.TEXT & ~filters.COMMAND, get_sleep_checkin)],
+            ENERGY:           [MessageHandler(filters.TEXT & ~filters.COMMAND, get_energy_checkin)],
+            TASKS:            [MessageHandler(filters.TEXT & ~filters.COMMAND, get_tasks_checkin)],
+            CONFIRM_SCHEDULE: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_schedule)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
@@ -647,6 +711,7 @@ def main() -> None:
     app.add_handler(CommandHandler("alarms", alarms_command))
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("history", history_command))
+    app.add_handler(CommandHandler("schedule", schedule_command))
 
     logger.info("ARIA is running...")
     app.run_polling()

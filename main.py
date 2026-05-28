@@ -10,6 +10,7 @@ Changes in this version:
   - /setalarm also allows changing task limit
   - OR-Tools scheduling layer added after task entry
   - /schedule command to view today's schedule
+  - Gemini 1.5 Flash LLM fallback for free-text messages
 """
 
 import logging
@@ -31,6 +32,7 @@ from apscheduler.triggers.cron import CronTrigger
 
 import database as db
 import scheduler as sched
+import llm
 
 load_dotenv()
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -654,6 +656,21 @@ async def history_command(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 
 # ─────────────────────────────────────────────────────────────
+# Free-text → Gemini fallback
+# ─────────────────────────────────────────────────────────────
+async def free_text_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    uid  = update.effective_user.id
+    user = db.get_user(uid)
+    if not user or not user.get("onboarded"):
+        await update.message.reply_text("Type /start to set up ARIA first!")
+        return
+
+    checkin = db.get_todays_checkin(uid)
+    reply   = await llm.ask_aria(user, checkin, update.message.text)
+    await update.message.reply_text(reply)
+
+
+# ─────────────────────────────────────────────────────────────
 # /cancel
 # ─────────────────────────────────────────────────────────────
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -712,6 +729,8 @@ def main() -> None:
     app.add_handler(CommandHandler("done", done_command))
     app.add_handler(CommandHandler("history", history_command))
     app.add_handler(CommandHandler("schedule", schedule_command))
+    # Must be last — catches all free-text not handled by conversation flows above
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, free_text_handler))
 
     logger.info("ARIA is running...")
     app.run_polling()

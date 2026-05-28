@@ -45,7 +45,7 @@ async def ask_aria(user: dict, checkin: dict | None, user_message: str) -> str:
         system = build_system_prompt(user, checkin)
         full_prompt = f"{system}\n\nUser: {user_message}\nARIA:"
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-3.5-flash",
             contents=full_prompt,
         )
         return response.text.strip()

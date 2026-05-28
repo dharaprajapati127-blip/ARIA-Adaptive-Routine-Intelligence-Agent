@@ -1,12 +1,9 @@
-# llm.py — Gemini 1.5 Flash integration for ARIA
-
 import os
-import google.generativeai as genai
+from google import genai
 from dotenv import load_dotenv
 
 load_dotenv()
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
-model = genai.GenerativeModel("gemini-1.5-flash")
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 def build_system_prompt(user: dict, checkin: dict | None) -> str:
     name = user.get("first_name") or "the user"
@@ -47,7 +44,10 @@ async def ask_aria(user: dict, checkin: dict | None, user_message: str) -> str:
     try:
         system = build_system_prompt(user, checkin)
         full_prompt = f"{system}\n\nUser: {user_message}\nARIA:"
-        response = model.generate_content(full_prompt)
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=full_prompt,
+        )
         return response.text.strip()
     except Exception as e:
-        return "Something went wrong on my end. Try again in a moment!"
+        return f"Something went wrong on my end. Try again in a moment!"

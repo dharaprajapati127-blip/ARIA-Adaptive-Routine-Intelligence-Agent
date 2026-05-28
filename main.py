@@ -10,7 +10,8 @@ Changes in this version:
   - /setalarm also allows changing task limit
   - OR-Tools scheduling layer added after task entry
   - /schedule command to view today's schedule
-  - Gemini 1.5 Flash LLM fallback for free-text messages
+  - Gemini 3.5 Flash LLM fallback for free-text messages
+  - Fixed /schedule bug: "reply yes" message removed from format_schedule
 """
 
 import logging
@@ -434,8 +435,9 @@ async def get_tasks_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     summary += f"\n📌 Tasks:\n{fmt_tasks(tasks)}\n"
 
     await update.message.reply_text(summary, parse_mode="Markdown")
+    # "reply yes" prompt only shown here during checkin, not in /schedule
     await update.message.reply_text(
-        sched.format_schedule(schedule, energy),
+        sched.format_schedule(schedule, energy) + "\n\nReply *yes* to confirm or tell me what to swap!",
         parse_mode="Markdown",
     )
     return CONFIRM_SCHEDULE
@@ -467,7 +469,7 @@ async def confirm_schedule(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         context.user_data["tasks"]    = new_tasks
         db.save_checkin(uid, tasks=new_tasks)
         await update.message.reply_text(
-            sched.format_schedule(schedule, energy),
+            sched.format_schedule(schedule, energy) + "\n\nReply *yes* to confirm or tell me what to swap!",
             parse_mode="Markdown",
         )
         return CONFIRM_SCHEDULE
@@ -496,6 +498,7 @@ async def schedule_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     wake     = user.get("wake_time") or "09:00"
     schedule = sched.build_schedule(tasks, energy, wake)
 
+    # No "reply yes" here — this is view-only
     await update.message.reply_text(
         sched.format_schedule(schedule, energy),
         parse_mode="Markdown",

@@ -476,10 +476,7 @@ async def get_tasks_checkin(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     limit = user.get("task_limit") or 3
 
     raw   = update.message.text.strip()
-    tasks = [
-        re.sub(r"^[\d]+[.)]\s*", "", line).strip()
-        for line in raw.splitlines() if line.strip()
-    ][:limit]
+    tasks = await llm.parse_tasks(raw, limit)
 
     db.save_checkin(uid, tasks=tasks)
     context.user_data["tasks"] = tasks

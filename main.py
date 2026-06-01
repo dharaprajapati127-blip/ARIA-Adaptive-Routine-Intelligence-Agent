@@ -12,6 +12,7 @@ Changes in this version:
   - /schedule command to view today's schedule
   - Gemini 3.5 Flash LLM fallback for free-text messages
   - Fixed /schedule bug: "reply yes" message removed from format_schedule
+  - Weekly analytics report every Sunday 9am
 """
 
 import logging
@@ -192,6 +193,57 @@ async def send_task_reminder(app, uid: int) -> None:
 
 
 # ─────────────────────────────────────────────────────────────
+# Weekly analytics report
+# ─────────────────────────────────────────────────────────────
+async def send_weekly_report(app, uid: int) -> None:
+    user  = db.get_user(uid)
+    name  = (user or {}).get("first_name") or "there"
+    rows  = db.get_weekly_stats(uid)
+
+    if not rows:
+        return
+
+    energy_emoji = {"High 🔥": "🔥", "Medium ⚡": "⚡", "Low 🌙": "🌙"}
+    day_names    = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    lines = [f"📊 *{name}'s week in review*\n"]
+    total_done  = 0
+    total_tasks = 0
+    best_day    = None
+    best_rate   = -1
+
+    for row in rows:
+        d        = row["checkin_date"]
+        day_name = day_names[d.weekday()]
+        energy   = row["energy_level"] or "—"
+        e_emoji  = energy_emoji.get(energy, "—")
+        done     = int(row["done_tasks"] or 0)
+        total    = int(row["total_tasks"] or 0)
+        rate     = done / total if total else 0
+
+        total_done  += done
+        total_tasks += total
+
+        if rate > best_rate:
+            best_rate = rate
+            best_day  = day_name
+
+        task_str = f"✅ {done}/{total}" if total else "—"
+        lines.append(f"{day_name}  {e_emoji} {energy:<12} {task_str}")
+
+    overall = f"{round((total_done/total_tasks)*100)}%" if total_tasks else "—"
+    if best_day:
+        lines.append(f"\n🏆 Best day: *{best_day}*")
+    lines.append(f"⚡ Avg completion: *{overall}*")
+
+    await app.bot.send_message(
+        chat_id=uid,
+        text="\n".join(lines),
+        parse_mode="Markdown",
+    )
+
+
+# ─────────────────────────────────────────────────────────────
 # post_init
 # ─────────────────────────────────────────────────────────────
 async def post_init(app) -> None:
@@ -202,6 +254,18 @@ async def post_init(app) -> None:
     users = db.get_all_onboarded_users()
     for user in users:
         schedule_user_alarms(app, user, scheduler)
+
+        # Weekly report — every Sunday 9am IST
+        uid = user["telegram_id"]
+        tz  = ZoneInfo(user.get("timezone") or "Asia/Kolkata")
+        scheduler.add_job(
+            send_weekly_report,
+            CronTrigger(day_of_week="sun", hour=9, minute=0, timezone=tz),
+            id=f"weekly_{uid}",
+            kwargs={"app": app, "uid": uid},
+            replace_existing=True,
+        )
+
     logger.info(f"[ARIA] Restored alarms for {len(users)} user(s).")
 
 

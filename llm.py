@@ -51,3 +51,24 @@ async def ask_aria(user: dict, checkin: dict | None, user_message: str) -> str:
         return response.text.strip()
     except Exception as e:
         return f"Something went wrong on my end. Try again in a moment!"
+async def parse_tasks(raw_input: str, limit: int) -> list[str]:
+    try:
+        prompt = f"""Extract up to {limit} tasks from this message. 
+Return ONLY a JSON array of short task strings, nothing else.
+Example output: ["task one", "task two", "task three"]
+
+Message: {raw_input}"""
+        response = client.models.generate_content(
+            model="gemini-3.5-flash",
+            contents=prompt,
+        )
+        import json, re
+        text = response.text.strip()
+        # strip markdown code fences if present
+        text = re.sub(r"```json|```", "", text).strip()
+        tasks = json.loads(text)
+        return [str(t).strip() for t in tasks[:limit] if t]
+    except Exception:
+        # fallback to manual parsing if Gemini fails
+        lines = [l.strip() for l in raw_input.splitlines() if l.strip()]
+        return lines[:limit]    

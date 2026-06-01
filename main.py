@@ -13,6 +13,7 @@ Changes in this version:
   - Gemini 3.5 Flash LLM fallback for free-text messages
   - Fixed /schedule bug: "reply yes" message removed from format_schedule
   - Weekly analytics report every Sunday 9am
+  - Real-time schedule rebuild after /done
 """
 
 import logging
@@ -671,6 +672,7 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     uid     = update.effective_user.id
     checkin = db.get_todays_checkin(uid)
     tasks   = (checkin or {}).get("tasks") or []
+    user    = db.get_user(uid)
 
     if not tasks:
         await update.message.reply_text("No tasks yet. Do /checkin first!")
@@ -687,6 +689,16 @@ async def done_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                     f"✅ *Done:* _{tasks[idx]}_\n\n{motivation}",
                     parse_mode="Markdown",
                 )
+                # Rebuild schedule with remaining tasks
+                if not all_done:
+                    energy    = (checkin or {}).get("energy_level") or "Medium ⚡"
+                    wake      = (user or {}).get("wake_time") or "09:00"
+                    remaining = [c["task_text"] for c in completions if not c["completed"]]
+                    schedule  = sched.build_schedule(remaining, energy, wake)
+                    await update.message.reply_text(
+                        "📅 *Updated schedule:*\n\n" + sched.format_schedule(schedule, energy),
+                        parse_mode="Markdown",
+                    )
             else:
                 await update.message.reply_text("Already marked done, or task not found.")
         except (ValueError, IndexError):

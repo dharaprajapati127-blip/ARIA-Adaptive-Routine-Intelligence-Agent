@@ -361,3 +361,27 @@ def get_completion_rate(telegram_id: int, days: int = 7) -> float | None:
     if row and row["total"]:
         return row["done"] / row["total"]
     return None
+    
+def get_weekly_stats(telegram_id: int) -> list[dict]:
+    """Returns per-day energy + task completion for the last 7 days."""
+    with get_conn() as conn:
+        cur = conn.cursor(dictionary=True)
+        cur.execute(
+            """
+            SELECT
+                c.checkin_date,
+                c.energy_level,
+                COUNT(tc.id)          AS total_tasks,
+                SUM(tc.completed)     AS done_tasks
+            FROM checkins c
+            LEFT JOIN task_completions tc ON tc.checkin_id = c.id
+            WHERE c.telegram_id = %s
+              AND c.checkin_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+            GROUP BY c.checkin_date, c.energy_level
+            ORDER BY c.checkin_date ASC
+            """,
+            (telegram_id,),
+        )
+        rows = cur.fetchall()
+        cur.close()
+    return rows

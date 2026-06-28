@@ -14,6 +14,7 @@ Changes in this version:
   - Fixed /schedule bug: "reply yes" message removed from format_schedule
   - Weekly analytics report every Sunday 9am
   - Real-time schedule rebuild after /done
+  - allow_reentry on conversation flows so /checkin etc. never get stuck
 """
 
 import logging
@@ -776,6 +777,7 @@ def main() -> None:
             OB_GAP:         [MessageHandler(filters.TEXT & ~filters.COMMAND, ob_get_gap)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )
 
     checkin = ConversationHandler(
@@ -787,6 +789,7 @@ def main() -> None:
             CONFIRM_SCHEDULE: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_schedule)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )
 
     setalarm = ConversationHandler(
@@ -796,6 +799,7 @@ def main() -> None:
             SA_VALUE: [MessageHandler(filters.TEXT & ~filters.COMMAND, setalarm_value)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )
 
     app.add_handler(onboarding)
